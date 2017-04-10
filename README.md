@@ -1,2 +1,2 @@
 # DP1
-Laboratories developed during the Distributeted Programming I course followed at Politecnico di Torino
+Laboratories developed during the attendance of Distributeted Programming I course issued by Politecnico di Torino
