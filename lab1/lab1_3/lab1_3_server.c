@@ -89,6 +89,10 @@ void serve_client(int conn_fd){
 			err_ret("(%s) - error in reading message from socket", prog_name);
 			break;
 		}
+		if(nread == 0){
+			printf("Connection closed by client\n");
+			break;
+		}
 		buf[nread] = '\0';
 		if(sscanf(buf, "%" SCNu16 " " "%" SCNu16, &first, &second) != 2){
 			err_ret("(%s) - invalid operands", prog_name);
