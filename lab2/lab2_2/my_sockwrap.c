@@ -551,7 +551,7 @@ sock_ntop(const struct sockaddr *sa, socklen_t salen)
 	}
 /* end sock_ntop */
 
-#ifdef	IPV6
+
 	case AF_INET6: {
 		struct sockaddr_in6	*sin6 = (struct sockaddr_in6 *) sa;
 
@@ -565,9 +565,9 @@ sock_ntop(const struct sockaddr *sa, socklen_t salen)
 		}
 		return (str + 1);
 	}
-#endif
 
-#ifdef	AF_UNIX
+
+
 	case AF_UNIX: {
 		struct sockaddr_un	*unp = (struct sockaddr_un *) sa;
 
@@ -579,7 +579,7 @@ sock_ntop(const struct sockaddr *sa, socklen_t salen)
 			snprintf(str, sizeof(str), "%s", unp->sun_path);
 		return(str);
 	}
-#endif
+
 
 	default:
 		snprintf(str, sizeof(str), "sock_ntop: unknown AF_xxx: %d, len %d",

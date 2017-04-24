@@ -13,9 +13,10 @@ typedef int SOCKET;
 
 char *prog_name;
 
-int sendFile(SOCKET c, char *fname)
+int sendFile(SOCKET c, char *fname);
 void Sclose (int fd);
 int getFileName(SOCKET c, char *fname);
+int getFileInfo(char *fname, char *finfo);
 
 int main(int argc, char *argv[]){
 	
@@ -78,7 +79,7 @@ int main(int argc, char *argv[]){
 				// wrong command
 				case -3:
 					err_msg("(%s) - incorrect format in request", prog_name);
-					if(sendn(conn_fd, ERROR, sizeof(ERROR), MSG_NOSIGNAL) != sizeof(ERROR)){
+					if(sendn(conn_fd, ERROR, strlen(ERROR), MSG_NOSIGNAL) != strlen(ERROR)){
 						err_msg("(%s) - could not send back error message", prog_name);
 						break_flag = 1;
 					}
@@ -95,9 +96,9 @@ int main(int argc, char *argv[]){
 			//printf("File name: %s\n", fname);
 			
 			// get file info (size, lastmod)
-			if(getFileInfo(finfo) == -1){
+			if(getFileInfo(fname, finfo) == -1){
 				err_msg("(%s) - file not found or error in retrieving file info", prog_name);
-				if(sendn(conn_fd, ERROR, sizeof(ERROR), MSG_NOSIGNAL) != sizeof(ERROR)){
+				if(sendn(conn_fd, ERROR, strlen(ERROR), 0) != strlen(ERROR)){
 					err_msg("(%s) - could not send back error message", prog_name);
 					Sclose(conn_fd);
 					break;
@@ -132,9 +133,7 @@ int main(int argc, char *argv[]){
 				Sclose(conn_fd);
 				break;
 			}
-			
-			//buf[HEADERSZ] = '\0';
-			//printf("HEADER: %s\n",buf);
+			printf("(%s) - file sent to client\n", prog_name);
 		}
 	}
 	return 0;
@@ -163,11 +162,12 @@ int sendFile(SOCKET c, char *fname){
 			}
 		}
 	}while(nbytes > 0);
+	free(buf);
 	
 	return 0;
 }
 	
-int getFileInfo(char *finfo){
+int getFileInfo(char *fname, char *finfo){
 	
 	struct stat statbuf;
 	uint32_t fsize_n, lastmod_n;
@@ -211,6 +211,8 @@ int getFileName(SOCKET c, char *fname){
 	if(sscanf(buf, GET"%s"END, name) != 1){
 		return -3;
 	}
+	
+	//printf("File name received: %s\n", name);
 	
 	strncpy(fname, name, MAXFNAME);
 	// terminate string if source exceed max fname size
