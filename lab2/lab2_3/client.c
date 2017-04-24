@@ -1,18 +1,19 @@
 #include "my_sockwrap.h"
 #include "errlib.h"
 
-#define BUFSZ 512
+#define BUFSZ 8192
 #define MAXFNAME 256
 #define GET "GET "
 #define END "\r\n"
 #define OK "+OK\r\n"
 #define ERROR "-ERR\r\n"
 #define COPY "_new"
+#define QUIT "QUIT\r\n"
 
 typedef int SOCKET;
 char *prog_name;
 
-void buildRequest(char *buf, char *fname);
+int buildRequest(char *buf, char *fname);
 int readFileinfo(SOCKET s, uint32_t *fsize, uint32_t *fdate);
 int copyFile(SOCKET s, char *buf, uint32_t fsize, char *fname);
 
@@ -25,6 +26,7 @@ int main(int argc, char *argv[]){
 	char fname[MAXFNAME];
 	int ok_sz = strlen(OK);
 	int error_sz = strlen(ERROR);
+	int quit_sz = strlen(QUIT);
 	uint32_t fsize, fdate;
 	
 	prog_name = argv[0];
@@ -43,11 +45,17 @@ int main(int argc, char *argv[]){
 	printf("(%s) - Connected to: %s\n", prog_name, Sock_ntop((SA *)&saddr, saddr_len));
 	
 	while(1){
-		printf("(%s) - enter file name to request (max %d chars will be sent):\n",prog_name, MAXFNAME);
+		printf("(%s) - enter file name to request CTRL+D to end communication\n",prog_name);
 		
 		// clean buffer
 		memset(buf, 0, BUFSZ * sizeof(char));
-		buildRequest(buf, fname);
+		
+		if(buildRequest(buf, fname) == -1){
+			printf("(%s) - Sending QUIT message and closing socket\n", prog_name);
+			Sendn(s, QUIT, quit_sz, 0);
+			Close(s);
+			break;
+		}
 		//printf("Message: %s\n", buf);
 		
 		// send file request
@@ -92,9 +100,9 @@ int main(int argc, char *argv[]){
 			return -1;
 		}
 		
-		printf("(%s) - file received\n", prog_name);
+		printf("(%s) - file received: %s, Size: %d, Time last-mod: %d\n", prog_name, fname, fsize, fdate);
+		
 	}
-
 	return 0;
 }
 
@@ -119,7 +127,7 @@ int copyFile(SOCKET s, char *buf, uint32_t fsize, char *fname){
 			return -1;
 		}
 		fsize-=n;
-		printf("(%s) - Read: %ld bytes, remaining %d bytes\n",prog_name, n, fsize);
+		// printf("(%s) - Read: %ld bytes, remaining %d bytes\n",prog_name, n, fsize);
 	}while(fsize > 0);
 	free(new_name);
 	Close(fd);
@@ -147,12 +155,14 @@ int readFileinfo(SOCKET s, uint32_t *fsize, uint32_t *fdate){
 
 
 
-void buildRequest(char *buf, char *fname){
+int buildRequest(char *buf, char *fname){
 	
 	int n;
 	size_t limit;
 	
 	Fgets(fname, MAXFNAME, stdin);
+	if(feof(stdin))
+		return -1;
 	// remove \r or \n or \r\n
 	limit = strcspn(fname, "\r\n");
 	fname[limit] = '\0';
@@ -164,7 +174,7 @@ void buildRequest(char *buf, char *fname){
 	n = strlen(buf);
 	strcpy(&buf[n], END);
 	//printf("message %s", buf);
-	return;
+	return 0;
 }
 	
 	

@@ -1,20 +1,20 @@
 #include "my_sockwrap.h"
 #include "errlib.h"
 
-#define BUFSZ 1024
+#define BUFSZ 8192
 #define MAXFNAME 256
 #define INFOSZ 13
 #define GET "GET "
 #define END "\r\n"
 #define ERROR "-ERR\r\n"
 #define OK "+OK\r\n"
+#define QUIT "QUIT\r\n"
 
 typedef int SOCKET;
 
 char *prog_name;
 
 int sendFile(SOCKET c, char *fname);
-void Sclose (int fd);
 int getFileName(SOCKET c, char *fname);
 int getFileInfo(char *fname, char *finfo);
 
@@ -26,7 +26,7 @@ int main(int argc, char *argv[]){
 	
 	char fname[MAXFNAME];
 	char finfo[INFOSZ];
-	int break_flag;
+	int break_flag=0;
 	
 	prog_name = argv[0];
 	
@@ -56,15 +56,17 @@ int main(int argc, char *argv[]){
 				goto again;
 			else{
 				err_msg ("(%s) error - accept() failed", prog_name);
-				Sclose(conn_fd);
+				close(conn_fd);
 				continue;
 			}
 		}
 		printf("(%s) - Client connected: %s\n", prog_name, sock_ntop((SA *) &caddr, caddr_len));
 		while(1){
 			
-			printf("(%s) - Waiting for file request...\n", prog_name);
+			// reset break flag important
 			break_flag = 0;
+			
+			printf("(%s) - Waiting for file request...\n", prog_name);
 			switch(getFileName(conn_fd, fname)){
 				// error in server
 				case -1:
@@ -85,11 +87,14 @@ int main(int argc, char *argv[]){
 					}
 					break;
 				// ok filename in fname
+				case 1:
+					printf("(%s) - client requested end of communication\n", prog_name);
+					break_flag = 1;
+					break;
 				case 0:
 					break;
 			}
 			if(break_flag){
-				Sclose(conn_fd);
 				break;
 			}
 					
@@ -100,7 +105,6 @@ int main(int argc, char *argv[]){
 				err_msg("(%s) - file not found or error in retrieving file info", prog_name);
 				if(sendn(conn_fd, ERROR, strlen(ERROR), 0) != strlen(ERROR)){
 					err_msg("(%s) - could not send back error message", prog_name);
-					Sclose(conn_fd);
 					break;
 				}
 				continue;
@@ -109,7 +113,6 @@ int main(int argc, char *argv[]){
 			// send file info
 			if(sendn(conn_fd, finfo, INFOSZ, MSG_NOSIGNAL) != INFOSZ){
 				err_msg("(%s) - error while transfering file infos...", prog_name);
-				Sclose(conn_fd);
 				break;
 			}
 			
@@ -130,12 +133,21 @@ int main(int argc, char *argv[]){
 					break;
 			}
 			if(break_flag){
-				Sclose(conn_fd);
 				break;
 			}
 			printf("(%s) - file sent to client\n", prog_name);
 		}
+		
+		// out of client loop
+		if(close(conn_fd) != 0){
+			err_msg ("(%s) error - close() failed", prog_name);
+		}
+		else{
+			printf("(%s) - Client socket closed.\n", prog_name);
+		}
 	}
+	
+	// out of server loop
 	return 0;
 }
 
@@ -207,6 +219,10 @@ int getFileName(SOCKET c, char *fname){
 		return -2;
 	}
 	
+	if(strcmp(buf, QUIT) == 0){
+		return 1;
+	}
+	
 	// extract file name from buffer if request is correct
 	if(sscanf(buf, GET"%s"END, name) != 1){
 		return -3;
@@ -220,12 +236,6 @@ int getFileName(SOCKET c, char *fname){
 	free(buf);
 	free(name);
 	return 0;
-}
-
-void Sclose (int fd)
-{
-	if (close(fd) != 0)
-		err_msg ("(%s) error - close() failed", prog_name);
 }
 	
 		
