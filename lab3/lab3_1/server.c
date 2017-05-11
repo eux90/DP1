@@ -9,15 +9,19 @@
 #define ERROR "-ERR\r\n"
 #define OK "+OK\r\n"
 #define QUIT "QUIT\r\n"
+#define CHMAX 3
 
 typedef int SOCKET;
 
 char *prog_name;
+int nchild;
 
 int sendFile(SOCKET c, char *fname);
 int getFileName(SOCKET c, char *fname);
 int getFileInfo(char *fname, char *finfo);
 void service(int conn_fd);
+
+// handle SIGCHLD and decrement child counter
 void handle_sigchld(int sig);
 
 int main(int argc, char *argv[]){
@@ -28,6 +32,8 @@ int main(int argc, char *argv[]){
 	int		childpid;		/* pid of child process */
 	
 	prog_name = argv[0];
+	nchild = 0;
+	
 	if(argc != 2){
 		err_quit("Usage: %s <port>", prog_name);
 	}
@@ -55,41 +61,47 @@ int main(int argc, char *argv[]){
 	
 	/* main loop */
 	for(;;){
-		again:
-		if ( (conn_fd = accept(listen_fd, (SA *)&caddr, &caddr_len)) < 0)
-		{
-			if (INTERRUPTED_BY_SIGNAL ||
-				errno == EPROTO || errno == ECONNABORTED ||
-				errno == EMFILE || errno == ENFILE ||
-				errno == ENOBUFS || errno == ENOMEM			
-				)
-				goto again;
-			else{
-				err_msg ("(%s) error - accept() failed", prog_name);
-				close(conn_fd);
-				continue;
+		// allow only CHMAX client at a time
+		while(nchild < CHMAX){
+			again:
+			if ( (conn_fd = accept(listen_fd, (SA *)&caddr, &caddr_len)) < 0)
+			{
+				if (INTERRUPTED_BY_SIGNAL ||
+					errno == EPROTO || errno == ECONNABORTED ||
+					errno == EMFILE || errno == ENFILE ||
+					errno == ENOBUFS || errno == ENOMEM			
+					)
+					goto again;
+				else{
+					err_msg ("(%s) error - accept() failed", prog_name);
+					close(conn_fd);
+					continue;
+				}
 			}
+			printf("(%s) - Client connected: %s\n", prog_name, sock_ntop((SA *) &caddr, caddr_len));
+			
+			
+			/* fork a new process to serve the client on the new connection */
+			if((childpid=fork())<0) 
+			{ 
+				err_msg("fork() failed");
+				close(conn_fd);
+			}
+			else if (childpid > 0)
+			{ 
+				/* parent process */
+				close(conn_fd);	/* close connected socket */
+				// increment counter of child processes
+				nchild++;
+			}
+			else
+			{
+				/* child process */
+				close(listen_fd);			/* close passive socket */
+				service(conn_fd);			/* serve client */
+				exit(0);
+			}	
 		}
-		printf("(%s) - Client connected: %s\n", prog_name, sock_ntop((SA *) &caddr, caddr_len));
-		
-		/* fork a new process to serve the client on the new connection */
-		if((childpid=fork())<0) 
-		{ 
-			err_msg("fork() failed");
-			close(conn_fd);
-		}
-		else if (childpid > 0)
-		{ 
-			/* parent process */
-			close(conn_fd);	/* close connected socket */
-		}
-		else
-		{
-			/* child process */
-			close(listen_fd);			/* close passive socket */
-			service(conn_fd);			/* serve client */
-			exit(0);
-		}	
 	}
 	
 	// out of server loop
@@ -283,6 +295,8 @@ void handle_sigchld(int sig) {
   int saved_errno = errno;
   while (waitpid((pid_t)(-1), 0, WNOHANG) > 0) {}
   errno = saved_errno;
+  // decrese child counter
+  nchild--;
 }
 	
 		
