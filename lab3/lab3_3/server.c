@@ -5,6 +5,8 @@
 #define MSGSZ 2048
 #define MAXFNAME 256
 #define INFOSZ 13
+#define MAXPROCS 10
+#define WAIT_SEC 120
 #define GET "GET "
 #define END "\r\n"
 #define ERROR "-ERR\r\n"
@@ -18,38 +20,81 @@ char *prog_name;
 int sendFile(SOCKET c, char *fname);
 int parseMessage(char *recv_buf, char *fname);
 int getFileInfo(char *fname, char *finfo);
+void service(int conn_fd);
 
 int main(int argc, char *argv[]){
 	
 	// socket vars
-	SOCKET listen_fd,conn_fd;
-	struct sockaddr_storage saddr,caddr;
-	socklen_t saddr_len,caddr_len;
-	ssize_t n;
+	SOCKET listen_fd;
+	struct sockaddr_storage saddr;
+	socklen_t saddr_len;
 	
-	// data vars
-	char fname[MAXFNAME];
-	char finfo[INFOSZ];
-	char recv_buf[MSGSZ];
-	
-	// flags
-	int break_flag = 0;
+	// mutliprocess management
+	int	childpid;		/* pid of child process */
+	int i = 0;
+	int nprocs;
 	
 	prog_name = argv[0];
 	
-	memset(&saddr, 0, sizeof(saddr));
-	memset(&caddr, 0, sizeof(caddr));
-	saddr_len = sizeof(saddr);
-	caddr_len = sizeof(caddr);
-	
-	if(argc != 2){
-		err_quit("Usage: %s <port>", prog_name);
+	if(argc != 3){
+		err_quit("Usage: %s <port> <#processes>", prog_name);
 	}
+	
+	nprocs = atoi(argv[2]);
+	if(nprocs > MAXPROCS){
+		err_quit("%s - max allowed is %d children", prog_name, MAXPROCS);
+	}
+	
+	memset(&saddr, 0, sizeof(saddr));
+	saddr_len = sizeof(saddr);
 	
 	// listen for connections
 	listen_fd = Tcp_listen(INADDR_ANY, argv[1], &saddr_len);
 	Getsockname(listen_fd, (SA *)&saddr, &saddr_len);
 	printf("(%s) - Server started at %s\n", prog_name, sock_ntop((SA *) &saddr, saddr_len));
+	
+	/* create processes */
+    for (i=0; i<nprocs; i++){
+		if((childpid=fork())<0)
+			err_sys("fork() failed");
+		else if (childpid == 0){
+	    /* child process */
+	    
+			service(listen_fd);
+
+		}
+    }
+    printf("(%s) - Process pool created\n", prog_name);
+    // keep main process open until childs are alive
+    for(i=0; i<nprocs; i++){
+		waitpid((pid_t)(-1), 0, 0);
+	}
+}
+
+
+void service(int listen_fd){
+	
+	// socket vars
+	SOCKET conn_fd;
+	struct sockaddr_storage caddr;
+	socklen_t caddr_len;
+	
+	// data vars
+	char fname[MAXFNAME];
+	char finfo[INFOSZ];
+	char recv_buf[MSGSZ];
+	ssize_t n;
+	
+	//flags
+	int break_flag = 0;
+	
+	//select vars
+	struct timeval tv;
+	fd_set rfds;
+	int retval;
+	
+	memset(&caddr, 0, sizeof(caddr));
+	caddr_len = sizeof(caddr);
 	
 	while(1){		
 		again:
@@ -76,7 +121,24 @@ int main(int argc, char *argv[]){
 			memset(recv_buf, 0, MSGSZ);
 			memset(finfo, 0, INFOSZ);
 			
+			// set select parameters
+			FD_ZERO(&rfds);
+			FD_SET(conn_fd, &rfds);
+			tv.tv_sec = WAIT_SEC;
+			tv.tv_usec = 0;
+			
 			printf("(%s) - Waiting for file request...\n", prog_name);
+			
+			// wait for input
+			retval = select(FD_SETSIZE, &rfds, 0, 0, &tv);
+			if(retval == -1){
+				err_msg("(%s) - select failed", prog_name);
+				break;
+			}
+			if(retval == 0){
+				printf("(%s) - Timeout on client connection\n", prog_name);
+				break;
+			}
 			
 			// receve max MSGSZ-1 bytes because last one in buffer will be set to \0
 			if((n = recv(conn_fd, recv_buf, MSGSZ-1, 0)) == -1){
@@ -154,10 +216,34 @@ int main(int argc, char *argv[]){
 		break_flag = 0;
 	}
 	
-	// out of server loop
-	return 0;
+	return;
 }
 
+int parseMessage(char *recv_buf, char *fname){
+	
+	size_t n = 0;
+	int quitsz = strlen(QUIT);
+	int getsz = strlen(GET);
+	
+	// check if client requested end of communication
+	if(strncmp(recv_buf, QUIT, quitsz) == 0){
+		return 1;
+	}
+	
+	// check if message format is correct
+	if(strncmp(recv_buf, GET, getsz) != 0){
+		return -1;
+	}
+	
+	// cut trailer from recv_buf
+	n = strcspn(recv_buf, END);
+	recv_buf[n] = '\0';
+	strncpy(fname, &recv_buf[getsz], MAXFNAME);
+	// terminate copied string in case source was longer than destination
+	fname[MAXFNAME-1] = '\0';
+	return 0;
+}
+	
 int sendFile(SOCKET c, char *fname){
 	
 	int fd;
@@ -203,31 +289,6 @@ int getFileInfo(char *fname, char *finfo){
 	memcpy(finfo, OK, strlen(OK));
 	memcpy(&finfo[strlen(OK)], &fsize_n, sizeof(fsize_n));
 	memcpy(&finfo[strlen(OK) + sizeof(fsize_n)], &lastmod_n, sizeof(lastmod_n));
-	return 0;
-}
-
-int parseMessage(char *recv_buf, char *fname){
-	
-	size_t n = 0;
-	int quitsz = strlen(QUIT);
-	int getsz = strlen(GET);
-	
-	// check if client requested end of communication
-	if(strncmp(recv_buf, QUIT, quitsz) == 0){
-		return 1;
-	}
-	
-	// check if message format is correct
-	if(strncmp(recv_buf, GET, getsz) != 0){
-		return -1;
-	}
-	
-	// cut trailer from recv_buf
-	n = strcspn(recv_buf, END);
-	recv_buf[n] = '\0';
-	strncpy(fname, &recv_buf[getsz], MAXFNAME);
-	// terminate copied string in case source was longer than destination
-	fname[MAXFNAME-1] = '\0';
 	return 0;
 }
 	
