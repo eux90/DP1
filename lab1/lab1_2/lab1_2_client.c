@@ -18,13 +18,18 @@ int main(int argc, char *argv[]){
 	
 	
 	struct sockaddr_in saddr;
-	socklen_t saddr_len = sizeof(saddr);
 	struct in_addr received_addr;
+	socklen_t saddr_len;
+
 	SOCKET s;
 	uint16_t port_h;
 	
-	
+	// initialize variables
+	memset(&saddr, 0, sizeof(saddr));
+	memset(&received_addr, 0, sizeof(received_addr));
+	saddr_len = sizeof(saddr);
 	prog_name = argv[0];
+	
 	
 	if(argc != 3){
 		err_quit("Usage: %s <address> <port>", prog_name);
@@ -39,7 +44,6 @@ int main(int argc, char *argv[]){
 	Inet_pton(AF_INET, argv[1], &received_addr);
 	
 	// populate socket structure
-	bzero(&saddr, sizeof(saddr));
 	saddr.sin_family 	= AF_INET;
 	saddr.sin_port		= htons(port_h);
 	saddr.sin_addr		= received_addr;

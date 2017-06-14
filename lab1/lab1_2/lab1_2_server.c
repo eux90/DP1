@@ -19,39 +19,41 @@ char *prog_name;
 
 int main(int argc, char *argv[]){
 	
-	
+	// socket vars
 	struct sockaddr_in saddr, caddr;
 	uint16_t port_h;
-	socklen_t saddr_len = sizeof(saddr);
-	socklen_t caddr_len = sizeof(caddr);
+	socklen_t saddr_len;
+	socklen_t caddr_len;
 	int listen_fd, conn_fd;
+	
+	// data vars
 	ssize_t received;
 	char data;
 	
-	
+	// initialize variables
+	memset(&saddr, 0, sizeof(saddr));
+	memset(&caddr, 0, sizeof(caddr));
+	saddr_len = sizeof(saddr);
+	caddr_len = sizeof(caddr);
 	
 	prog_name = argv[0];
 	
-	if(argc != 3){
-		err_quit("Usage: %s <addr> <port>\n", prog_name);
+	if(argc != 2){
+		err_quit("Usage: %s <port>\n", prog_name);
 	}
 	
-	// clean socket structure
-	memset(&saddr, 0, sizeof(saddr));
-	
-	// set socket type
-	saddr.sin_family = AF_INET;
-	
 	// get port
-	if(sscanf(argv[2], "%" SCNu16, &port_h) != 1){
+	if(sscanf(argv[1], "%" SCNu16, &port_h) != 1){
 		err_sys("Wrong port number\n");
 	}
 	
+	// set socket type
+	saddr.sin_family = AF_INET;	
 	// convert and set port
 	saddr.sin_port = htons(port_h);
-	
 	// get convert and set address
-	Inet_pton(AF_INET, argv[1], &(saddr.sin_addr));
+	//Inet_pton(AF_INET, argv[1], &(saddr.sin_addr));
+	saddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
 	
 	printf("Address: %s\n", Sock_ntop((SA*)&saddr, saddr_len));
@@ -74,7 +76,7 @@ int main(int argc, char *argv[]){
 		}
 		
 		for(;;){
-			
+			// only one byte is received so recv is ok
 			received = recv(conn_fd, &data, sizeof(data), 0);
 			if(received == 0){
 				printf("Connection closed by client\n");

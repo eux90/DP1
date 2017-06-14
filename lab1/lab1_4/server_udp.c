@@ -16,11 +16,19 @@ int main(int argc, char *argv[]){
 	SOCKET s;
 	struct sockaddr_in saddr,caddr;
 	uint16_t port_h;
-	socklen_t saddr_len = sizeof(saddr);
-	socklen_t caddr_len = sizeof(caddr);
+	socklen_t saddr_len;
+	socklen_t caddr_len;
+	
+	// data vars
 	char msg[BUFSZ];
 	int n;
 	
+	// initialize vars
+	bzero(&saddr, sizeof(saddr));
+	bzero(&caddr, sizeof(caddr));
+	bzero(&msg, BUFSZ * sizeof(char));
+	saddr_len = sizeof(saddr);
+	caddr_len = sizeof(caddr);
 	prog_name = argv[0];
 	
 	if(argc != 2){
@@ -28,13 +36,11 @@ int main(int argc, char *argv[]){
 	}
 	
 	// get port
-	
 	if(sscanf(argv[1], "%" SCNu16, &port_h) != 1){
 		err_sys("(%s) - invlaid port number\n");
 	}
 	
 	// populate sockaddr structure
-	memset(&saddr, 0, saddr_len);
 	saddr.sin_family = AF_INET;
 	saddr.sin_port = htons(port_h);
 	saddr.sin_addr.s_addr = htonl(INADDR_ANY);

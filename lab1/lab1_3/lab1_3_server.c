@@ -17,11 +17,16 @@ void serve_client(int conn_fd);
 
 int main(int argc, char *argv[]){
 	
+	// socket vars
+	int listen_fd, conn_fd;
 	struct sockaddr_in saddr,caddr;
+	socklen_t caddrlen;
 	uint16_t porth;
-	int listen_fd,conn_fd;
-	socklen_t caddrlen = sizeof(caddr);
 	
+	// initialize vars
+	memset(&saddr, 0, sizeof(saddr));
+	memset(&caddr, 0, sizeof(caddr));
+	caddrlen = sizeof(caddr);
 	prog_name = argv[0];
 	
 	if(argc != 2){
@@ -31,9 +36,6 @@ int main(int argc, char *argv[]){
 	if(sscanf(argv[1], "%" SCNu16, &porth) != 1){
 		err_quit("(%s) - invalid port", prog_name);
 	}
-	
-	// clean server socket structure
-	memset(&saddr, 0, sizeof(saddr));
 	
 	// populate server socket structure
 	saddr.sin_family = AF_INET;
@@ -75,46 +77,61 @@ int main(int argc, char *argv[]){
 
 void serve_client(int conn_fd){
 	
-	char buf[BUFLEN];
-	int nread;
-	int towrite;
+	// data vars
+	char r_buf[BUFLEN];
+	char w_buf[BUFLEN];
 	uint16_t first;
 	uint16_t second;
 	int sum;
+	int n;
+	
+	// sizes
+	int err_sz;
+	int ovf_sz;
+	
+	// initialize buffers and sizes
+	bzero(&r_buf, BUFLEN * sizeof(char));
+	bzero(&w_buf, BUFLEN * sizeof(char));
+	err_sz = strlen(MSG_ERR);
+	ovf_sz = strlen(MSG_OVF);
+	
 	
 	while(1){
-		nread = towrite = first = second = sum = 0;
+		// initialize buffers for next iteration
+		bzero(&r_buf, BUFLEN * sizeof(char));
+		bzero(&w_buf, BUFLEN * sizeof(char));
 		printf("Waiting for operands...\n");
-		if((nread = recv(conn_fd, buf, BUFLEN, 0)) == -1){
+		n = recv(conn_fd, r_buf, BUFLEN, 0);
+		if(n == -1){
 			err_ret("(%s) - error in reading message from socket", prog_name);
 			break;
 		}
-		if(nread == 0){
+		if(n == 0){
 			printf("Connection closed by client\n");
 			break;
 		}
-		buf[nread] = '\0';
-		if(sscanf(buf, "%" SCNu16 " " "%" SCNu16, &first, &second) != 2){
+		r_buf[n] = '\0';
+		if(sscanf(r_buf, "%" SCNu16 " " "%" SCNu16, &first, &second) != 2){
 			err_ret("(%s) - invalid operands", prog_name);
-			int len = sizeof(MSG_ERR);
-			if(sendn(conn_fd, MSG_ERR, len, MSG_NOSIGNAL) != len){
+			if(sendn(conn_fd, MSG_ERR, err_sz, MSG_NOSIGNAL) != err_sz){
 				err_ret("(%s) - could not send error message", prog_name);
 				break;
 			}
+			continue;
 		}
 		sum = first + second;
 		if(sum > MAX_UINT16T){
-			int len = sizeof(MSG_OVF);
-			if(sendn(conn_fd, MSG_OVF, len, MSG_NOSIGNAL) != len){
+			if(sendn(conn_fd, MSG_OVF, ovf_sz, MSG_NOSIGNAL) != ovf_sz){
 				err_ret("(%s) - could not send overflow message", prog_name);
 				break;
 			}
+			continue;
 		}
-		if((towrite = snprintf(buf, BUFLEN, "%d\r\n", sum)) < 0){
+		if((n = snprintf(w_buf, BUFLEN, "%d\r\n", sum)) < 0){
 			err_ret("(%s) - error in response creation", prog_name);
 			break;
 		}
-		if(sendn(conn_fd, buf, towrite, MSG_NOSIGNAL) != towrite){
+		if(sendn(conn_fd, w_buf, n, MSG_NOSIGNAL) != n){
 			err_ret("(%s) - could not send response message", prog_name);
 			break;
 		}

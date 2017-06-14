@@ -12,15 +12,28 @@ char *prog_name;
 
 int main(int argc, char *argv[]){
 	
-	prog_name = argv[0];
-	uint16_t port_h;
+	// socket vars
+	SOCKET s;
 	struct in_addr received_addr;
 	struct sockaddr_in saddr;
-	socklen_t saddr_len = sizeof(saddr);
-	SOCKET s;
+	socklen_t saddr_len;
+	uint16_t port_h;
+	
+	// select vars
 	fd_set rfds;
 	struct timeval tv;
+	int retval;
+	
+	// data vars
 	char msg[MSGSZ];
+	int n;
+	
+	// vars initialization
+	bzero(&received_addr, sizeof(received_addr));
+	bzero(&saddr, sizeof(saddr));
+	bzero(&msg, MSGSZ * sizeof(char));
+	saddr_len = sizeof(saddr);	
+	prog_name = argv[0];
 	
 	if(argc != 4){
 		err_quit("Usage: %s <address> <port> <message (max 31 characters)>", prog_name);
@@ -38,7 +51,6 @@ int main(int argc, char *argv[]){
 	snprintf(msg, MSGSZ, "%s", argv[3]);
 	
 	// populate structure
-	memset(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
 	saddr.sin_port = htons(port_h);
 	saddr.sin_addr = received_addr;
@@ -58,7 +70,7 @@ int main(int argc, char *argv[]){
 	Sendto(s, msg, strlen(msg), 0, (SA *) &saddr, saddr_len);
 	
 	// wait for response
-	int retval = Select(FD_SETSIZE, &rfds, 0, 0, &tv);
+	retval = Select(FD_SETSIZE, &rfds, 0, 0, &tv);
 	
 	// no response exit
 	if(retval == 0){
@@ -66,7 +78,7 @@ int main(int argc, char *argv[]){
 	}
 	
 	// receive response
-	int n = Recvfrom(s, &msg, MSGSZ-1, 0, (SA *) &saddr, &saddr_len);
+	n = Recvfrom(s, &msg, MSGSZ-1, 0, (SA *) &saddr, &saddr_len);
 	// terminate received message
 	msg[n] = '\0';
 	
