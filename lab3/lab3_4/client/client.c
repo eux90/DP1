@@ -17,9 +17,6 @@
 typedef int SOCKET;
 char *prog_name;
 
-int build_request(char *buf, char *fname);
-int read_file_info(SOCKET s, uint32_t *fsize, uint32_t *fdate);
-int receive_file(SOCKET s, char *r_buf, char *fname, int fsize);
 char *print_time(uint32_t fdate);
 void prot_a(SOCKET s);
 void prot_x(SOCKET s);
@@ -33,28 +30,36 @@ int main(int argc, char *argv[]){
 	
 	//protocol var
 	char prot;
-
-	prog_name = argv[0];
 	
-	// clean saddr and set saddrlen
+	// initialize variables
 	memset(&saddr, 0, sizeof(saddr));
 	saddr_len = sizeof(saddr);
+	prot = 'a';
+	prog_name = argv[0];
 	
-	if(argc != 4){
-		err_quit("Usage: %s <address> <port> <protocol (a or x)>", prog_name);
+	if(argc < 3){
+		err_quit("Usage: %s < -x (optional) > < address > < port > ", prog_name);
 	}
 	
-	prot = argv[3][0];
-	
-	if(prot != 'a' && prot != 'x'){
-		err_quit("Usage: %s <address> <port> <protocol (a or x)>", prog_name);
+	if(argc == 3){
+		// connect to server
+		s = Tcp_connect(argv[1], argv[2]);
+		Getpeername(s, (SA *)&saddr, &saddr_len);
+		printf("(%s) - Connected to: %s\n", prog_name, Sock_ntop((SA *)&saddr, saddr_len));
 	}
-	
-	// connect to server
-	s = Tcp_connect(argv[1], argv[2]);
-	Getpeername(s, (SA *)&saddr, &saddr_len);
-	printf("(%s) - Connected to: %s\n", prog_name, Sock_ntop((SA *)&saddr, saddr_len));
-	
+	else{
+		if(strcmp(argv[1], "-x") == 0){
+			prot = 'x';
+		}
+		else{
+			err_quit("Usage: %s < -x (optional) > < address > < port > ", prog_name);
+		}
+		// connect to server
+		s = Tcp_connect(argv[2], argv[3]);
+		Getpeername(s, (SA *)&saddr, &saddr_len);
+		printf("(%s) - Connected to: %s\n", prog_name, Sock_ntop((SA *)&saddr, saddr_len));
+	}
+
 	switch(prot){
 		
 		case 'a':
@@ -94,21 +99,21 @@ void prot_x(SOCKET s){
 	
 	while(1){
 		
+		// initialize vars
+		memset(&w_msg, 0, sizeof(message));
+		memset(&r_msg, 0, sizeof(message));
+		memset(&rk_buf, 0, BUFSZ * sizeof(char));	
+		
 		printf("\n*******************************************************\n");
 		printf("(%s) - RETRIEVE FILE:\t\t get <filename>\n", prog_name);
 		printf("(%s) - QUIT GRACEFULLY:\t\t q\n", prog_name);
 		printf("(%s) - FORCE QUIT:\t\t a\n", prog_name);
 		printf("*******************************************************\n\n");
 	
-
-		// celan buffer for keyboard read
-		memset(&rk_buf, 0, BUFSZ);
-		
 		Fgets(rk_buf, BUFSZ, stdin);
 		// QUIT request
 		if(rk_buf[0] == 'Q' || rk_buf[0] == 'q'){
 			// build QUIT message
-			memset(&w_msg, 0, sizeof(message));
 			w_msg.tag = QUIT;	
 			// send QUIT message
 			if(!xdr_message(&w_xdrs, &w_msg)){
@@ -131,7 +136,6 @@ void prot_x(SOCKET s){
 		// GET request
 		else{
 			// build GET message
-			memset(&w_msg, 0, sizeof(message));
 			w_msg.tag = GET;
 			w_msg.message_u.filename = (char *)malloc(MAXFNAME * sizeof(char));
 			memcpy(w_msg.message_u.filename, &rk_buf[4], MAXFNAME);
@@ -152,7 +156,6 @@ void prot_x(SOCKET s){
 			free(w_msg.message_u.filename);
 			
 			// read RESPONSE
-			memset(&r_msg, 0, sizeof(message));
 			if(!xdr_message(&r_xdrs, &r_msg)){
 				err_msg("(%s) - error in response format or connection closed by server", prog_name);
 				break;
@@ -168,7 +171,6 @@ void prot_x(SOCKET s){
 			if(r_msg.tag == OK){
 				printf("(%s) - file %s found, last mod: %s\n", prog_name, fname, print_time(r_msg.message_u.fdata.last_mod_time));
 				// receive file size
-				fsize = 0;
 				if(!xdr_u_int(&r_xdrs, &fsize)){
 					err_msg("(%s) - error in file size format or connection closed by server", prog_name);
 					break;
@@ -184,7 +186,9 @@ void prot_x(SOCKET s){
 				// read data
 				printf("(%s) - receiving file data...\n", prog_name);
 				while(fsize > 0){
+					// initialize vars
 					memset(&r_msg, 0, sizeof(message));
+					r_msg.message_u.fdata.contents.contents_val = NULL;
 					if(!xdr_message(&r_xdrs, &r_msg)){
 						err_msg("(%s) - could not read xdr message data...", prog_name);
 						free(r_msg.message_u.fdata.contents.contents_val);
@@ -239,7 +243,8 @@ void prot_a(SOCKET s){
 	
 	while(1){
 		
-		// clean buffers
+		// initialize buffers
+		memset(&rk_buf, 0, BUFSZ);
 		memset(w_buf, 0, BUFSZ * sizeof(char));
 		memset(r_buf, 0, BUFSZ * sizeof(char));
 		memset(fname, 0, MAXFNAME * sizeof(char));
@@ -249,9 +254,6 @@ void prot_a(SOCKET s){
 		printf("(%s) - QUIT GRACEFULLY:\t\t q\n", prog_name);
 		printf("(%s) - FORCE QUIT:\t\t a\n", prog_name);
 		printf("*******************************************************\n\n");
-		
-		// celan buffer for keyboard read
-		memset(&rk_buf, 0, BUFSZ);
 		
 		Fgets(rk_buf, BUFSZ, stdin);
 		
@@ -348,6 +350,8 @@ void prot_a(SOCKET s){
 			// read data
 			printf("(%s) - receiving file data...\n", prog_name);
 			while(fsize > 0){
+				// clen read buffer
+				memset(r_buf, 0, BUFSZ * sizeof(char));
 				n = Recv(s, r_buf, BUFSZ, 0);
 				// write data to file
 				if(write(fd, r_buf, n) != n){
@@ -355,14 +359,13 @@ void prot_a(SOCKET s){
 					break;
 				}
 				fsize-=n;
-				memset(r_buf, 0, BUFSZ * sizeof(char));
 			}
 			close(fd);
 			if(fsize > 0){
 				err_msg("(%s) - data received is partial, file may be corrupted", prog_name);
 				break;
 			}
-			printf("(%s) - file %s correctly received\n", prog_name, fname);
+			printf("(%s) - file correctly received\n", prog_name);
 		}
 	}
 	close(s);

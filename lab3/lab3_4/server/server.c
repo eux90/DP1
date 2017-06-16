@@ -28,27 +28,38 @@ int main(int argc, char *argv[]){
 	// protocol
 	char prot;
 	
-	prog_name = argv[0];
-	
+	// initialize variables
 	memset(&saddr, 0, sizeof(saddr));
 	memset(&caddr, 0, sizeof(caddr));
 	saddr_len = sizeof(saddr);
 	caddr_len = sizeof(caddr);
+	prot = 'a';
+	prog_name = argv[0];
 	
-	if(argc != 3){
-		err_quit("usage: %s <port> <protocol (a or x)>", prog_name);
+	if(argc < 2){
+		err_quit("Usage: %s < -x (optional) > < port > ", prog_name);
 	}
 	
-	prot = argv[2][0];
-	
-	if((prot != 'a') && (prot != 'x')){
-		err_quit("usage: %s <port> <protocol (a or x)>", prog_name);
+	if(argc == 2){
+		// listen for connections
+		listen_fd = Tcp_listen(INADDR_ANY, argv[1], &saddr_len);
+		Getsockname(listen_fd, (SA *)&saddr, &saddr_len);
+		printf("(%s) - server started at %s\n", prog_name, sock_ntop((SA *) &saddr, saddr_len));
+	}
+	else{
+		if(strcmp(argv[1], "-x") == 0){
+			prot = 'x';
+		}
+		else{
+			err_quit("Usage: %s < -x (optional) > < port > ", prog_name);
+		}
+		// listen for connections
+		listen_fd = Tcp_listen(INADDR_ANY, argv[2], &saddr_len);
+		Getsockname(listen_fd, (SA *)&saddr, &saddr_len);
+		printf("(%s) - server started at %s\n", prog_name, sock_ntop((SA *) &saddr, saddr_len));
 	}
 	
-	// listen for connections
-	listen_fd = Tcp_listen(INADDR_ANY, argv[1], &saddr_len);
-	Getsockname(listen_fd, (SA *)&saddr, &saddr_len);
-	printf("(%s) - server started at %s\n", prog_name, sock_ntop((SA *) &saddr, saddr_len));
+
 	
 	while(1){		
 		again:
@@ -87,7 +98,7 @@ void prot_x(int conn_fd){
 	// xdr vars
 	XDR r_xdrs,w_xdrs;
 	FILE *r_stream, *w_stream;
-	struct message r_msg, w_msg;
+	message r_msg, w_msg;
 	
 	// file vars
 	int fd;
@@ -104,25 +115,29 @@ void prot_x(int conn_fd){
 	xdrstdio_create(&w_xdrs, w_stream, XDR_ENCODE);
 	
 	while(1){
+		
+		// initialize vars for iteration
 		memset(&r_msg, 0, sizeof(message));
+		memset(&w_msg, 0, sizeof(message));
+		memset(fbuf, 0, BUFSZ * sizeof(char));
+		memset(fname, 0, MAXFNAME * sizeof(char));
+		sent = 0;
+		
 		if(!xdr_message(&r_xdrs, &r_msg)){
 			err_msg("(%s) - error in client request", prog_name);
-			// free xdr allocated data
-			free(r_msg.message_u.filename);
 			break;
 		}
 			
 		// GET request
 		if(r_msg.tag == GET){
 			// store filename in fname and free xdr allocated data
-			memset(fname, 0, MAXFNAME);
+			//memset(fname, 0, MAXFNAME);
 			strncpy(fname, r_msg.message_u.filename, MAXFNAME);
 			fname[MAXFNAME-1] = '\0';
 			free(r_msg.message_u.filename);
 			printf("(%s) - filename requested is: %s\n", prog_name, fname);
 			
 			// get file info
-			memset(&w_msg, 0, sizeof(message));
 			if(stat(fname, &statbuf) != 0){
 				err_msg("(%s) - file not found or error in retrieving file infos", prog_name);
 				// build and sen error message
@@ -168,13 +183,21 @@ void prot_x(int conn_fd){
 			fflush(w_stream);
 			
 			// send file
-			memset(fbuf, 0, BUFSZ);
-			memset(&w_msg, 0, sizeof(message));
-			sent = 0;
-			while((n = read(fd, fbuf, BUFSZ)) > 0){
-				w_msg.message_u.fdata.contents.contents_val = (char *)malloc(n * sizeof(char));
+			while(1){
+				// initialize variables
+				memset(fbuf, 0, BUFSZ * sizeof(char));
+				memset(&w_msg, 0, sizeof(message));
+				
+				// read data until end or error
+				n = read(fd, fbuf, BUFSZ);
+				if(n <= 0){
+					break;
+				}
+				
+				// send data
 				w_msg.tag = OK;
 				w_msg.message_u.fdata.contents.contents_len = (u_int)n;
+				w_msg.message_u.fdata.contents.contents_val = (char *)malloc(n * sizeof(char));
 				memcpy(w_msg.message_u.fdata.contents.contents_val, fbuf, n);
 				if(!xdr_message(&w_xdrs, &w_msg)){
 					err_msg("(%s) - error in transmission", prog_name);
@@ -183,8 +206,6 @@ void prot_x(int conn_fd){
 				}
 				fflush(w_stream);
 				free(w_msg.message_u.fdata.contents.contents_val);
-				memset(fbuf, 0, BUFSZ);
-				memset(&w_msg, 0, sizeof(message));
 				sent += n;
 			}
 			close(fd);
@@ -239,10 +260,11 @@ void prot_a(int conn_fd){
 
 	while(1){
 			
-		// clean fname and buffer for recv and finfo for send
+		// initialize vars
 		memset(fname, 0, MAXFNAME * sizeof(char));
 		memset(r_buf, 0, BUFSZ * sizeof(char));
 		memset(w_buf, 0, BUFSZ * sizeof(char));
+		sent = 0;
 			
 		printf("(%s) - Waiting for file request...\n", prog_name);
 			
@@ -318,9 +340,18 @@ void prot_a(int conn_fd){
 			}
 			
 			// send file
-			sent = 0;
-			memset(w_buf, 0, BUFSZ * sizeof(char));
-			while((n = read(fd, w_buf, BUFSZ)) > 0){
+			while(1){
+				
+				//initialize vars
+				memset(w_buf, 0, BUFSZ * sizeof(char));
+				
+				// read until end of file or error
+				n = read(fd, w_buf, BUFSZ);
+				if(n <= 0){
+					break;
+				}
+				
+				// send data
 				if(sendn(conn_fd, w_buf, n, MSG_NOSIGNAL) != n){
 					err_msg("(%s) - error in transmission", prog_name);
 					break;
