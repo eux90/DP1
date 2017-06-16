@@ -2,7 +2,8 @@
 #include "errlib.h"
 #include <time.h>
 
-#define BUFSZ 8192
+#define BUFSZ 300
+#define FBUFSZ 8192
 #define MAXFNAME 256
 #define GET_M "GET "
 #define END_M "\r\n"
@@ -50,6 +51,7 @@ void prot_a_multiplex(SOCKET s){
 	char rk_buf[BUFSZ];
 	char w_buf[BUFSZ];
 	char r_buf[BUFSZ];
+	char fbuf[FBUFSZ];
 	char fname[MAXFNAME];
 	ssize_t n;
 
@@ -99,7 +101,7 @@ void prot_a_multiplex(SOCKET s){
 				// send message
 				Sendn(s, w_buf, strlen(w_buf), 0);
 				printf("(%s) - QUIT message sent\n", prog_name);
-				break;
+				continue;
 			}
 
 			// EXIT request
@@ -197,10 +199,10 @@ void prot_a_multiplex(SOCKET s){
 
 			// there is a file transfer active...
 			else{
-				memset(r_buf, 0, BUFSZ * sizeof(char));
-				n = Recv(s, r_buf, BUFSZ, 0);
+				memset(fbuf, 0, FBUFSZ * sizeof(char));
+				n = Recv(s, fbuf, FBUFSZ, 0);
 				// write data to file
-				if(write(fd, r_buf, n) != n){
+				if(write(fd, fbuf, n) != n){
 					err_msg("(%s) - write failed...", prog_name);
 					break;
 				}

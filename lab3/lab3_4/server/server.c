@@ -3,7 +3,8 @@
 #include "types.h"
 #include <rpc/xdr.h>
 
-#define BUFSZ 8192
+#define BUFSZ 300
+#define FBUFSZ 8192
 #define MAXFNAME 256
 #define GET_M "GET "
 #define END_M "\r\n"
@@ -106,7 +107,7 @@ void prot_x(int conn_fd){
 	struct stat statbuf;
 	unsigned int fsize,sent;
 	char fname[MAXFNAME];
-	char fbuf[BUFSZ];
+	char fbuf[FBUFSZ];
 	
 	// create read and write streams
 	r_stream = fdopen(conn_fd, "r");
@@ -185,11 +186,11 @@ void prot_x(int conn_fd){
 			// send file
 			while(1){
 				// initialize variables
-				memset(fbuf, 0, BUFSZ * sizeof(char));
+				memset(fbuf, 0, FBUFSZ * sizeof(char));
 				memset(&w_msg, 0, sizeof(message));
 				
 				// read data until end or error
-				n = read(fd, fbuf, BUFSZ);
+				n = read(fd, fbuf, FBUFSZ);
 				if(n <= 0){
 					break;
 				}
@@ -245,6 +246,7 @@ void prot_a(int conn_fd){
 	char fname[MAXFNAME];
 	char r_buf[BUFSZ];
 	char w_buf[BUFSZ];
+	char fbuf[FBUFSZ];
 	ssize_t n,sent;
 	
 	// messages vars
@@ -343,21 +345,20 @@ void prot_a(int conn_fd){
 			while(1){
 				
 				//initialize vars
-				memset(w_buf, 0, BUFSZ * sizeof(char));
+				memset(fbuf, 0, FBUFSZ * sizeof(char));
 				
 				// read until end of file or error
-				n = read(fd, w_buf, BUFSZ);
+				n = read(fd, fbuf, FBUFSZ);
 				if(n <= 0){
 					break;
 				}
 				
 				// send data
-				if(sendn(conn_fd, w_buf, n, MSG_NOSIGNAL) != n){
+				if(sendn(conn_fd, fbuf, n, MSG_NOSIGNAL) != n){
 					err_msg("(%s) - error in transmission", prog_name);
 					break;
 				}
 				sent += n;
-				memset(w_buf, 0, BUFSZ * sizeof(char));
 			}
 			close(fd);
 			if(sent != statbuf.st_size){

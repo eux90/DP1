@@ -1,7 +1,8 @@
 #include "my_sockwrap.h"
 #include "errlib.h"
 
-#define BUFSZ 8192
+#define BUFSZ 300
+#define FBUFSZ 8192
 #define MAXFNAME 256
 #define GET_M "GET "
 #define END_M "\r\n"
@@ -15,10 +16,7 @@ typedef int SOCKET;
 char *prog_name;
 int nchild;
 
-int sendFile(SOCKET c, char *fname);
-int parseMessage(char *recv_buf, char *fname);
-int getFileInfo(char *fname, char *finfo);
-void service(int conn_fd);
+void prot_a(int conn_fd);
 
 // handle SIGCHLD and decrement child counter
 void handle_sigchld(int sig);
@@ -100,7 +98,7 @@ int main(int argc, char *argv[]){
 			{
 				/* child process */
 				close(listen_fd);			/* close passive socket */
-				service(conn_fd);			/* serve client */
+				prot_a(conn_fd);			/* serve client */
 				exit(0);
 			}	
 		}
@@ -110,13 +108,13 @@ int main(int argc, char *argv[]){
 	return 0;
 }
 
-
-void service(int conn_fd){
+void prot_a(int conn_fd){
 	
 	// data vars
 	char fname[MAXFNAME];
 	char r_buf[BUFSZ];
 	char w_buf[BUFSZ];
+	char fbuf[FBUFSZ];
 	ssize_t n,sent;
 	
 	// messages vars
@@ -215,21 +213,20 @@ void service(int conn_fd){
 			while(1){
 				
 				//initialize vars
-				memset(w_buf, 0, BUFSZ * sizeof(char));
+				memset(fbuf, 0, FBUFSZ * sizeof(char));
 				
 				// read until end of file or error
-				n = read(fd, w_buf, BUFSZ);
+				n = read(fd, fbuf, FBUFSZ);
 				if(n <= 0){
 					break;
 				}
 				
 				// send data
-				if(sendn(conn_fd, w_buf, n, MSG_NOSIGNAL) != n){
+				if(sendn(conn_fd, fbuf, n, MSG_NOSIGNAL) != n){
 					err_msg("(%s) - error in transmission", prog_name);
 					break;
 				}
 				sent += n;
-				memset(w_buf, 0, BUFSZ * sizeof(char));
 			}
 			close(fd);
 			if(sent != statbuf.st_size){
@@ -244,7 +241,7 @@ void service(int conn_fd){
 	close(conn_fd);
 	printf("(%s) - client socket closed\n", prog_name);
 	return;
-}
+}	
 
 void handle_sigchld(int sig) {
   int saved_errno = errno;
