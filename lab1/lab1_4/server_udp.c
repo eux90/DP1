@@ -1,4 +1,4 @@
-#include "sockwrap.h"
+#include "my_sockwrap.h"
 #include "errlib.h"
 #include <inttypes.h>
 #include <string.h>
@@ -14,10 +14,11 @@ char *prog_name;
 int main(int argc, char *argv[]){
 	
 	SOCKET s;
-	struct sockaddr_in saddr,caddr;
-	uint16_t port_h;
-	socklen_t saddr_len;
-	socklen_t caddr_len;
+	//struct sockaddr_in saddr,caddr;
+	struct sockaddr_storage saddr,caddr;
+	//uint16_t port_h;
+	socklen_t saddr_len, caddr_len;
+
 	
 	// data vars
 	char msg[BUFSZ];
@@ -35,6 +36,8 @@ int main(int argc, char *argv[]){
 		err_quit("Usage: %s <port>",prog_name);
 	}
 	
+	/*
+	
 	// get port
 	if(sscanf(argv[1], "%" SCNu16, &port_h) != 1){
 		err_sys("(%s) - invlaid port number\n");
@@ -50,9 +53,14 @@ int main(int argc, char *argv[]){
 	
 	//Bind socket
 	Bind(s, (SA *) &saddr, saddr_len);
+	*/
+	
+	s = Udp_server(INADDR_ANY, argv[1], &saddr_len);
+	Getsockname(s, (SA *)&saddr, &saddr_len);
+	printf("(%s) - Server started at %s\n", prog_name, sock_ntop((SA *) &saddr, saddr_len));
 	
 	
-	printf("(%s) - Server started... \n",prog_name);
+	//printf("(%s) - Server started... \n",prog_name);
 	while(1){
 		
 		if((n = recvfrom(s, msg, BUFSZ, 0, (SA *) &caddr, &caddr_len)) < 0){

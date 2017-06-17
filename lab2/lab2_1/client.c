@@ -60,6 +60,7 @@ int main(int argc, char *argv[]){
 			if(retval == 0){
 				i++;
 				if(i >= MAX_RETRANSMIT){
+					free(saddr);
 					err_quit("(%s) - no datagram received, max of %d retrasmissions reached", prog_name, MAX_RETRANSMIT);
 				}
 			}
@@ -76,6 +77,7 @@ int main(int argc, char *argv[]){
 	
 	// print received message
 	printf("(%s) - received: %s\n", prog_name, msg);
+	free(saddr);
 	
 	return 0;
 }

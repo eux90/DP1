@@ -10,6 +10,7 @@
 #define OK_M "+OK\r\n"
 #define QUIT_M "QUIT\r\n"
 #define MAXPROCS 10
+#define WAIT_SEC 20
 
 typedef int SOCKET;
 
@@ -110,6 +111,11 @@ void prot_a(int conn_fd){
 	int fd;
 	struct stat statbuf;
 	uint32_t fsize_n, lastmod_n;
+	
+	// select vars
+	fd_set rfds;
+	struct timeval tv;
+	int retval;
 
 	while(1){
 			
@@ -118,8 +124,25 @@ void prot_a(int conn_fd){
 		memset(r_buf, 0, BUFSZ * sizeof(char));
 		memset(w_buf, 0, BUFSZ * sizeof(char));
 		sent = 0;
+		
+		// setup read socket set
+		FD_ZERO(&rfds);
+		FD_SET(conn_fd, &rfds);
+		
+		// set waiting time
+		tv.tv_sec = WAIT_SEC;
+		tv.tv_usec = 0;
 			
 		printf("(%s) - Waiting for file request...\n", prog_name);
+		retval = select(FD_SETSIZE, &rfds, 0, 0, &tv);
+		if(retval < 0){
+			err_msg("(%s) - error in select", prog_name);
+			break;
+		}
+		if(retval == 0){
+			err_msg("(%s) - no message received within %d seconds, closing connection...", prog_name, WAIT_SEC);
+			break;
+		}
 			
 		// leave last byte of r_buf for \0
 		if((n = recv(conn_fd, r_buf, BUFSZ-1, 0)) == -1){

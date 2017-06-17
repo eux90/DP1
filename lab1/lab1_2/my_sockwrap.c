@@ -26,7 +26,7 @@
 #include <stdio.h>
 
 #include "errlib.h"
-#include "sockwrap.h"
+#include "my_sockwrap.h"
 
 extern char *prog_name;
 
@@ -551,7 +551,7 @@ sock_ntop(const struct sockaddr *sa, socklen_t salen)
 	}
 /* end sock_ntop */
 
-#ifdef	IPV6
+
 	case AF_INET6: {
 		struct sockaddr_in6	*sin6 = (struct sockaddr_in6 *) sa;
 
@@ -565,9 +565,9 @@ sock_ntop(const struct sockaddr *sa, socklen_t salen)
 		}
 		return (str + 1);
 	}
-#endif
 
-#ifdef	AF_UNIX
+
+
 	case AF_UNIX: {
 		struct sockaddr_un	*unp = (struct sockaddr_un *) sa;
 
@@ -579,7 +579,7 @@ sock_ntop(const struct sockaddr *sa, socklen_t salen)
 			snprintf(str, sizeof(str), "%s", unp->sun_path);
 		return(str);
 	}
-#endif
+
 
 	default:
 		snprintf(str, sizeof(str), "sock_ntop: unknown AF_xxx: %d, len %d",
@@ -722,6 +722,249 @@ Signal(int signo, Sigfunc *func)	/* for our signal() function */
 	if ( (sigfunc = signal(signo, func)) == SIG_ERR)
 		err_sys("signal error");
 	return(sigfunc);
+}
+
+int
+tcp_connect(const char *host, const char *serv)
+{
+	int				sockfd, n;
+	struct addrinfo	hints, *res, *ressave;
+
+	bzero(&hints, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+
+	if ( (n = getaddrinfo(host, serv, &hints, &res)) != 0)
+		err_quit("tcp_connect error for %s, %s: %s",
+				 host, serv, gai_strerror(n));
+	ressave = res;
+
+	do {
+		sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+		if (sockfd < 0)
+			continue;	/* ignore this one */
+
+		if (connect(sockfd, res->ai_addr, res->ai_addrlen) == 0)
+			break;		/* success */
+
+		Close(sockfd);	/* ignore this one */
+	} while ( (res = res->ai_next) != NULL);
+
+	if (res == NULL)	/* errno set from final connect() */
+		err_sys("tcp_connect error for %s, %s", host, serv);
+
+	freeaddrinfo(ressave);
+
+	return(sockfd);
+}
+/* end tcp_connect */
+
+/*
+ * We place the wrapper function here, not in wraplib.c, because some
+ * XTI programs need to include wraplib.c, and it also defines
+ * a Tcp_connect() function.
+ */
+
+int
+Tcp_connect(const char *host, const char *serv)
+{
+	return(tcp_connect(host, serv));
+}
+
+int
+tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
+{
+	int				listenfd, n;
+	const int		on = 1;
+	struct addrinfo	hints, *res, *ressave;
+
+	bzero(&hints, sizeof(struct addrinfo));
+	hints.ai_flags = AI_PASSIVE;
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+
+	if ( (n = getaddrinfo(host, serv, &hints, &res)) != 0)
+		err_quit("tcp_listen error for %s, %s: %s",
+				 host, serv, gai_strerror(n));
+	ressave = res;
+
+	do {
+		listenfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+		if (listenfd < 0)
+			continue;		/* error, try next one */
+
+		Setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+		if (bind(listenfd, res->ai_addr, res->ai_addrlen) == 0)
+			break;			/* success */
+
+		Close(listenfd);	/* bind error, close and try next one */
+	} while ( (res = res->ai_next) != NULL);
+
+	if (res == NULL)	/* errno from final socket() or bind() */
+		err_sys("tcp_listen error for %s, %s", host, serv);
+
+	Listen(listenfd, LISTENQ);
+
+	if (addrlenp)
+		*addrlenp = res->ai_addrlen;	/* return size of protocol address */
+
+	freeaddrinfo(ressave);
+
+	return(listenfd);
+}
+/* end tcp_listen */
+
+/*
+ * We place the wrapper function here, not in wraplib.c, because some
+ * XTI programs need to include wraplib.c, and it also defines
+ * a Tcp_listen() function.
+ */
+
+int
+Tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
+{
+	return(tcp_listen(host, serv, addrlenp));
+}
+
+int
+udp_client(const char *host, const char *serv, SA **saptr, socklen_t *lenp)
+{
+	int				sockfd, n;
+	struct addrinfo	hints, *res, *ressave;
+
+	bzero(&hints, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_DGRAM;
+
+	if ( (n = getaddrinfo(host, serv, &hints, &res)) != 0)
+		err_quit("udp_client error for %s, %s: %s",
+				 host, serv, gai_strerror(n));
+	ressave = res;
+
+	do {
+		sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+		if (sockfd >= 0)
+			break;		/* success */
+	} while ( (res = res->ai_next) != NULL);
+
+	if (res == NULL)	/* errno set from final socket() */
+		err_sys("udp_client error for %s, %s", host, serv);
+
+	*saptr = Malloc(res->ai_addrlen);
+	memcpy(*saptr, res->ai_addr, res->ai_addrlen);
+	*lenp = res->ai_addrlen;
+
+	freeaddrinfo(ressave);
+
+	return(sockfd);
+}
+/* end udp_client */
+
+int
+Udp_client(const char *host, const char *serv, SA **saptr, socklen_t *lenptr)
+{
+	return(udp_client(host, serv, saptr, lenptr));
+}
+
+int
+udp_server(const char *host, const char *serv, socklen_t *addrlenp)
+{
+	int				sockfd, n;
+	struct addrinfo	hints, *res, *ressave;
+
+	bzero(&hints, sizeof(struct addrinfo));
+	hints.ai_flags = AI_PASSIVE;
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_DGRAM;
+
+	if ( (n = getaddrinfo(host, serv, &hints, &res)) != 0)
+		err_quit("udp_server error for %s, %s: %s",
+				 host, serv, gai_strerror(n));
+	ressave = res;
+
+	do {
+		sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+		if (sockfd < 0)
+			continue;		/* error - try next one */
+
+		if (bind(sockfd, res->ai_addr, res->ai_addrlen) == 0)
+			break;			/* success */
+
+		Close(sockfd);		/* bind error - close and try next one */
+	} while ( (res = res->ai_next) != NULL);
+
+	if (res == NULL)	/* errno from final socket() or bind() */
+		err_sys("udp_server error for %s, %s", host, serv);
+
+	if (addrlenp)
+		*addrlenp = res->ai_addrlen;	/* return size of protocol address */
+
+	freeaddrinfo(ressave);
+
+	return(sockfd);
+}
+/* end udp_server */
+
+int
+Udp_server(const char *host, const char *serv, socklen_t *addrlenp)
+{
+	return(udp_server(host, serv, addrlenp));
+}
+
+int
+sock_cmp_addr(const struct sockaddr *sa1, const struct sockaddr *sa2,
+			 socklen_t salen)
+{
+	if (sa1->sa_family != sa2->sa_family)
+		return(-1);
+
+	switch (sa1->sa_family) {
+		case AF_INET: {
+			return(memcmp( &((struct sockaddr_in *) sa1)->sin_addr,
+					   &((struct sockaddr_in *) sa2)->sin_addr,
+					   sizeof(struct in_addr)));
+		}
+
+		case AF_INET6: {
+			return(memcmp( &((struct sockaddr_in6 *) sa1)->sin6_addr,
+					   &((struct sockaddr_in6 *) sa2)->sin6_addr,
+					   sizeof(struct in6_addr)));
+		}
+	}
+
+	return (-1);
+}
+
+int
+sock_cmp_port(const struct sockaddr *sa1, const struct sockaddr *sa2,
+			 socklen_t salen)
+{
+	if (sa1->sa_family != sa2->sa_family)
+		return(-1);
+
+	switch (sa1->sa_family) {
+	case AF_INET: {
+		return( ((struct sockaddr_in *) sa1)->sin_port ==
+				((struct sockaddr_in *) sa2)->sin_port);
+	}
+
+	case AF_INET6: {
+		return( ((struct sockaddr_in6 *) sa1)->sin6_port ==
+				((struct sockaddr_in6 *) sa2)->sin6_port);
+	}
+
+	}
+    return (-1);
+}
+
+void *
+Malloc(size_t size)
+{
+	void	*ptr;
+
+	if ( (ptr = malloc(size)) == NULL)
+		err_sys("malloc error");
+	return(ptr);
 }
 
 

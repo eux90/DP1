@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 #include "errlib.h"
-#include "sockwrap.h"
+#include "my_sockwrap.h"
 
 typedef int SOCKET;
 

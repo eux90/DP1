@@ -14,15 +14,24 @@
 #define _SOCKWRAP_H
 
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <signal.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
 
 #define SA struct sockaddr
 
 #define INTERRUPTED_BY_SIGNAL (errno == EINTR)
+
+#define	LISTENQ		1024
 
 typedef	void	Sigfunc(int);	/* for signal handlers */
 
@@ -126,6 +135,18 @@ signal(int signo, Sigfunc *func);
 
 Sigfunc * 
 Signal(int signo, Sigfunc *func);
+
+int		 tcp_connect(const char *, const char *);
+int		 tcp_listen(const char *, const char *, socklen_t *);
+int		 udp_server(const char *, const char *, socklen_t *);
+int		 udp_client(const char *, const char *, SA **, socklen_t *);
+int		 Tcp_connect(const char *, const char *);
+int		 Tcp_listen(const char *, const char *, socklen_t *);
+int		 Udp_client(const char *, const char *, SA **, socklen_t *);
+int		 Udp_server(const char *, const char *, socklen_t *);
+void	*Malloc(size_t);
+int		 sock_cmp_addr(const SA *, const SA *, socklen_t);
+int		 sock_cmp_port(const SA *, const SA *, socklen_t);
 
 
 #endif

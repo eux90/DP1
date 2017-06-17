@@ -8,7 +8,7 @@
 
 
 #include "errlib.h"
-#include "sockwrap.h"
+#include "my_sockwrap.h"
 
 #define LISTENQ 5
 
