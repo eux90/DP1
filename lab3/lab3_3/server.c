@@ -16,6 +16,11 @@ typedef int SOCKET;
 
 char *prog_name;
 
+pid_t childs[MAXPROCS];
+
+struct sigaction sa, old;
+
+static void handler(int ignore);
 void prot_a(int conn_fd);
 
 int main(int argc, char *argv[]){
@@ -28,7 +33,9 @@ int main(int argc, char *argv[]){
 	// mutliprocess management
 	int	childpid;		/* pid of child process */
 	int i = 0;
-	int nprocs;
+	int j = 0;
+	int nprocs = 0;
+	bzero(&childs, MAXPROCS * sizeof(pid_t));
 	
 	// initialize variables
 	memset(&saddr, 0, sizeof(saddr));
@@ -36,6 +43,18 @@ int main(int argc, char *argv[]){
 	saddr_len = sizeof(saddr);
 	caddr_len = sizeof(caddr);
 	prog_name = argv[0];
+	
+	// initialize multiprocess variables
+	memset(&sa, 0, sizeof(sa));
+	memset(&old, 0, sizeof(old));
+	sa.sa_handler = handler;
+	sigemptyset (&sa.sa_mask);
+	sa.sa_flags = 0;
+	
+	// install signal handler
+	sigaction (SIGINT, &sa, &old);
+	
+
 	
 	if(argc != 3){
 		err_quit("Usage: %s <port> <#processes>", prog_name);
@@ -58,6 +77,12 @@ int main(int argc, char *argv[]){
     for (i=0; i<nprocs; i++){
 		if((childpid=fork())<0)
 			err_sys("fork() failed");
+		else if (childpid > 0){
+		/* parent process */
+			childs[j] = childpid;
+			j++;
+			//printf("pid: %d j: %d", childpid, j);
+		}
 		else if (childpid == 0){
 	    /* child process */
 	    
@@ -247,4 +272,22 @@ void prot_a(int conn_fd){
 	close(conn_fd);
 	printf("(%s) - client socket closed\n", prog_name);
 	return;
-}	
+}
+
+static void handler(int ignore){
+	
+	int i=0;
+	/* Kill the children.  */
+	for (i = 0; i < MAXPROCS; ++i){
+      if (childs[i] > 0){
+          kill (childs[i], SIGINT);
+          waitpid (childs[i], 0, 0);
+      }
+    }
+
+	/* Restore the default handler.  */
+	sigaction (SIGINT, &old, 0);
+
+	/* Kill self.  */
+	kill (getpid (), SIGINT);
+}
