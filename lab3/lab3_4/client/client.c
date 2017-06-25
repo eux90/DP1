@@ -85,7 +85,8 @@ void prot_x(SOCKET s){
 	message r_msg, w_msg;
 	
 	// file vars
-	int fd;
+	//int fd;
+	FILE *fPtr;
 	unsigned int fsize;
 	char fname[MAXFNAME];
 
@@ -179,9 +180,10 @@ void prot_x(SOCKET s){
 				printf("(%s) - file size: %d\n",prog_name, fsize);
 				
 				// open a file for writing
-				if((fd = open(fname, O_CREAT | O_WRONLY, 0775)) == -1){
+				//if((fd = open(fname, O_CREAT | O_WRONLY, 0775)) == -1){
+				if((fPtr = fopen(fname, "w")) == NULL){
 					err_msg("(%s) - could not create a file for writing data...", prog_name);
-					close(fd);
+					//close(fd);
 					break;
 				}
 				// read data
@@ -195,7 +197,8 @@ void prot_x(SOCKET s){
 						free(r_msg.message_u.fdata.contents.contents_val);
 						break;
 					}
-					if(write(fd, r_msg.message_u.fdata.contents.contents_val, r_msg.message_u.fdata.contents.contents_len) != r_msg.message_u.fdata.contents.contents_len){
+					//if(write(fd, r_msg.message_u.fdata.contents.contents_val, r_msg.message_u.fdata.contents.contents_len) != r_msg.message_u.fdata.contents.contents_len){
+					if(fwrite(r_msg.message_u.fdata.contents.contents_val, 1, r_msg.message_u.fdata.contents.contents_len, fPtr) != r_msg.message_u.fdata.contents.contents_len){
 						err_msg("(%s) - write failed...", prog_name);
 						free(r_msg.message_u.fdata.contents.contents_val);
 						break;
@@ -203,7 +206,8 @@ void prot_x(SOCKET s){
 					fsize -= r_msg.message_u.fdata.contents.contents_len;
 					free(r_msg.message_u.fdata.contents.contents_val);
 				}
-				close(fd);
+				//close(fd);
+				fclose(fPtr);
 				if(fsize > 0){
 					err_msg("(%s) - data received is partial, file may be corrupted", prog_name);
 					break;
@@ -239,7 +243,8 @@ void prot_a(SOCKET s){
 	int get_sz = strlen(GET_M);
 	
 	// file vars
-	int fd;
+	//int fd;
+	FILE *fPtr;
 	uint32_t fsize, fdate, fsize_n, fdate_n;
 
 	
@@ -344,7 +349,8 @@ void prot_a(SOCKET s){
 			printf("(%s) - file %s found, last mod: %s\n", prog_name, fname, print_time(fdate));
 			
 			// open a file for writing
-			if((fd = open(fname, O_CREAT | O_WRONLY, 0775)) == -1){
+			//if((fd = open(fname, O_CREAT | O_WRONLY, 0775)) == -1){
+			if((fPtr = fopen(fname, "w")) == NULL){
 				err_msg("(%s) - could not create a file for writing...", prog_name);
 				break;
 			}
@@ -356,13 +362,15 @@ void prot_a(SOCKET s){
 				memset(fbuf, 0, FBUFSZ * sizeof(char));
 				n = Recv(s, fbuf, FBUFSZ, 0);
 				// write data to file
-				if(write(fd, fbuf, n) != n){
+				//if(write(fd, fbuf, n) != n){
+				if(fwrite(fbuf, 1, n, fPtr) != n){
 					err_msg("(%s) - write failed...", prog_name);
 					break;
 				}
 				fsize-=n;
 			}
-			close(fd);
+			//close(fd);
+			fclose(fPtr);
 			if(fsize > 0){
 				err_msg("(%s) - data received is partial, file may be corrupted", prog_name);
 				break;

@@ -109,28 +109,34 @@ int main(int argc, char *argv[]){
 int copyFile(SOCKET s, char *buf, uint32_t fsize, char *fname){
 	
 	ssize_t n;
-	int fd;
+	//int fd;
+	FILE *fPtr;
 	char *new_name = malloc(sizeof(char) * (MAXFNAME + strlen(COPY)));
 	strcpy(new_name,fname);
 	strcat(new_name, COPY);
 	
-	if((fd = open(new_name, O_CREAT | O_WRONLY, 0775)) == -1){
+	//if((fd = open(new_name, O_CREAT | O_WRONLY, 0775)) == -1){
+	if((fPtr = fopen(new_name, "w")) == NULL){
 		free(new_name);
 		return -1;
 	}
 	
 	do{
+		bzero(buf, BUFSZ);
 		n = Recv(s, buf, BUFSZ, 0);
-		if(write(fd, buf, n) != n){
+		if(fwrite(buf, 1, n, fPtr) != n){
+		//if(write(fd, buf, n) != n){
 			free(new_name);
-			Close(fd);
+			//Close(fd);
+			fclose(fPtr);
 			return -1;
 		}
 		fsize-=n;
 		// printf("(%s) - Read: %ld bytes, remaining %d bytes\n",prog_name, n, fsize);
 	}while(fsize > 0);
 	free(new_name);
-	Close(fd);
+	//Close(fd);
+	fclose(fPtr);
 	return 0;
 }
 	

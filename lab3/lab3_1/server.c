@@ -124,7 +124,8 @@ void prot_a(int conn_fd){
 	int ok_sz = strlen(OK_M);
 	
 	//file vars
-	int fd;
+	//int fd;
+	FILE *fPtr = NULL;
 	struct stat statbuf;
 	uint32_t fsize_n, lastmod_n;
 
@@ -175,16 +176,6 @@ void prot_a(int conn_fd){
 			fname[MAXFNAME-1] = '\0';
 			printf("(%s) - filename requested is: %s\n", prog_name, fname);
 			
-			// try to open file for reading
-			if((fd = open(fname, O_RDONLY)) == -1){
-				err_msg("(%s) - error opening file for reading..", prog_name);
-				if(sendn(conn_fd, ERROR_M, error_sz, MSG_NOSIGNAL) != error_sz){
-					err_msg("(%s) - could not send back error message", prog_name);
-					break;
-				}
-				continue;
-			}
-			
 			// get file info
 			if(stat(fname, &statbuf) == -1){
 				err_msg("(%s) - file not found or error in retrieving file infos", prog_name);
@@ -197,6 +188,17 @@ void prot_a(int conn_fd){
 			fsize_n = htonl(statbuf.st_size);
 			lastmod_n = htonl(statbuf.st_mtim.tv_sec);
 			
+			// try to open file for reading
+			//if((fd = open(fname, O_RDONLY)) == -1){
+			if((fPtr = fopen(fname, "r")) == NULL){
+				err_msg("(%s) - error opening file for reading..", prog_name);
+				if(sendn(conn_fd, ERROR_M, error_sz, MSG_NOSIGNAL) != error_sz){
+					err_msg("(%s) - could not send back error message", prog_name);
+					break;
+				}
+				continue;
+			}
+			
 			// build info message
 			memcpy(w_buf, OK_M, ok_sz);
 			memcpy(&w_buf[ok_sz], &fsize_n, sizeof(fsize_n));
@@ -206,6 +208,7 @@ void prot_a(int conn_fd){
 			n = ok_sz + sizeof(fsize_n) + sizeof(lastmod_n);
 			if(sendn(conn_fd, w_buf, n, MSG_NOSIGNAL) != n){
 				err_msg("(%s) - error sending file infos..", prog_name);
+				fclose(fPtr);
 				break;
 			}
 			
@@ -216,19 +219,21 @@ void prot_a(int conn_fd){
 				memset(fbuf, 0, FBUFSZ * sizeof(char));
 				
 				// read until end of file or error
-				n = read(fd, fbuf, FBUFSZ);
-				if(n <= 0){
+				//n = read(fd, fbuf, FBUFSZ);
+				if(((n = fread(fbuf, 1, FBUFSZ, fPtr)) == 0) || (ferror(fPtr) != 0)){
+					clearerr(fPtr);
 					break;
 				}
 				
-				// send data
+				// send data			
 				if(sendn(conn_fd, fbuf, n, MSG_NOSIGNAL) != n){
 					err_msg("(%s) - error in transmission", prog_name);
 					break;
 				}
 				sent += n;
 			}
-			close(fd);
+			//close(fd);
+			fclose(fPtr);
 			if(sent != statbuf.st_size){
 				err_msg("(%s) - error in read or transmission", prog_name);
 				break;

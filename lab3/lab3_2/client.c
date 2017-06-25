@@ -63,7 +63,8 @@ void prot_a_multiplex(SOCKET s){
 	int get_sz = strlen(GET_M);
 
 	// file vars
-	int fd;
+	//int fd;
+	FILE *fPtr;
 	uint32_t fsize, fdate, fsize_n, fdate_n, r_data;
 
 	// select vars
@@ -188,7 +189,8 @@ void prot_a_multiplex(SOCKET s){
 				printf("(%s) - file %s found, Size: %u, Last mod: %s\n", prog_name, fname, fsize, print_time(fdate));
 
 				// open a file for writing
-				if((fd = open(fname, O_CREAT | O_WRONLY, 0775)) == -1){
+				//if((fd = open(fname, O_CREAT | O_WRONLY, 0775)) == -1){
+				if((fPtr = fopen(fname, "w")) == NULL){
 					err_msg("(%s) - could not create a file for writing...", prog_name);
 					break;
 				}
@@ -202,14 +204,17 @@ void prot_a_multiplex(SOCKET s){
 				memset(fbuf, 0, FBUFSZ * sizeof(char));
 				n = Recv(s, fbuf, FBUFSZ, 0);
 				// write data to file
-				if(write(fd, fbuf, n) != n){
+				//if(write(fd, fbuf, n) != n){
+				if(fwrite(fbuf, 1, n, fPtr) != n){
 					err_msg("(%s) - write failed...", prog_name);
+					fclose(fPtr);
 					break;
 				}
 				r_data-=n;
 				// if no more data to read close file
 				if(r_data <= 0){
-					Close(fd);
+					//Close(fd);
+					fclose(fPtr);
 					printf("(%s) - file correctly received\n", prog_name);
 					status_flag = 0;
 				}

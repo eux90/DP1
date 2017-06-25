@@ -160,29 +160,39 @@ int main(int argc, char *argv[]){
 
 int sendFile(SOCKET c, char *fname){
 	
-	int fd;
+	//int fd;
+	FILE *fPtr;
 	ssize_t nbytes;
 	char *buf = malloc(SENDSZ * sizeof(char));
 	
-	if((fd = open(fname, O_RDONLY)) == -1){
+	if((fPtr = fopen(fname, "r")) == NULL){
+	//if((fd = open(fname, O_RDONLY)) == -1){
+		free(buf);
 		return -1;
 	}
 	
 	do{
+		bzero(buf, SENDSZ);
 		// error in reading file
-		if((nbytes = read(fd, buf, SENDSZ)) == -1){
+		if(((nbytes = fread(buf, 1, SENDSZ, fPtr)) != SENDSZ) && (ferror(fPtr) != 0)){
+		//if((nbytes = read(fd, buf, SENDSZ)) == 0 ){
+			clearerr(fPtr);
+			fclose(fPtr);
+			free(buf);
 			return -2;
 		}
 		// there is data to send
 		if(nbytes > 0){
 			// error while sending data to socket
 			if(sendn(c, buf, nbytes, MSG_NOSIGNAL) != nbytes){
+				fclose(fPtr);
+				free(buf);
 				return -3;
 			}
 		}
 	}while(nbytes > 0);
 	free(buf);
-	
+	fclose(fPtr);
 	return 0;
 }
 	
