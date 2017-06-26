@@ -85,13 +85,13 @@ void prot_x(SOCKET s){
 	message r_msg, w_msg;
 	
 	// file vars
-	//int fd;
-	FILE *fPtr;
+	FILE *fPtr = NULL;
 	unsigned int fsize;
 	char fname[MAXFNAME];
 
 	// streams
-	FILE *w_stream, *r_stream;
+	FILE *w_stream = NULL;
+	FILE *r_stream = NULL;
 
 	// create stream for writing
 	w_stream = fdopen(s, "w");
@@ -107,14 +107,13 @@ void prot_x(SOCKET s){
 		memset(&rk_buf, 0, BUFSZ * sizeof(char));	
 		
 		printf("\n*******************************************************\n");
-		printf("(%s) - RETRIEVE FILE:\t\t get <filename>\n", prog_name);
-		printf("(%s) - QUIT GRACEFULLY:\t\t q\n", prog_name);
-		printf("(%s) - FORCE QUIT:\t\t a\n", prog_name);
+		printf("(%s) - RETRIEVE FILE:\t\t <filename>\n", prog_name);
+		printf("(%s) - QUIT GRACEFULLY:\t\t CTRL + D\n", prog_name);
 		printf("*******************************************************\n\n");
 	
 		Fgets(rk_buf, BUFSZ, stdin);
 		// QUIT request
-		if(rk_buf[0] == 'Q' || rk_buf[0] == 'q'){
+		if(feof(stdin)){
 			// build QUIT message
 			w_msg.tag = QUIT;	
 			// send QUIT message
@@ -126,21 +125,12 @@ void prot_x(SOCKET s){
 			printf("(%s) - QUIT message sent\n", prog_name);
 			break;
 		}
-		// EXIT request
-		else if(rk_buf[0] == 'A' || rk_buf[0] == 'a'){
-			break;
-		}
-		// request not recognised
-		else if((strncmp(rk_buf, "GET ", 4) != 0) && (strncmp(rk_buf, "get ", 4) != 0)){
-			printf("(%s) - command not recognised try again..\n", prog_name);
-			continue;
-		}
 		// GET request
 		else{
 			// build GET message
 			w_msg.tag = GET;
-			w_msg.message_u.filename = (char *)malloc(MAXFNAME * sizeof(char));
-			memcpy(w_msg.message_u.filename, &rk_buf[4], MAXFNAME);
+			w_msg.message_u.filename = (char *)Malloc(MAXFNAME * sizeof(char));
+			memcpy(w_msg.message_u.filename, rk_buf, MAXFNAME);
 			limit = strcspn(w_msg.message_u.filename, "\r\n");
 			w_msg.message_u.filename[limit] = '\0';
 			w_msg.message_u.filename[MAXFNAME-1] = '\0';
@@ -165,29 +155,37 @@ void prot_x(SOCKET s){
 			
 			// ERROR RESPONSE
 			if(r_msg.tag == ERR){
-				printf("(%s) - error message from server, file may not exist\n", prog_name);
-				continue;
+				printf("(%s) - -ERR message from server, file may not exist\n", prog_name);
+				break;
 			}
 			
 			// OK RESPONSE
 			if(r_msg.tag == OK){
 				printf("(%s) - file %s found, last mod: %s\n", prog_name, fname, print_time(r_msg.message_u.fdata.last_mod_time));
+				/*
 				// receive file size
-				if(!xdr_u_int(&r_xdrs, &fsize)){
+				if(!xdr_int(&r_xdrs, &fsize)){
 					err_msg("(%s) - error in file size format or connection closed by server", prog_name);
 					break;
 				}
+				*/
+				fsize = r_msg.message_u.fdata.contents.contents_len;
 				printf("(%s) - file size: %d\n",prog_name, fsize);
 				
 				// open a file for writing
-				//if((fd = open(fname, O_CREAT | O_WRONLY, 0775)) == -1){
 				if((fPtr = fopen(fname, "w")) == NULL){
 					err_msg("(%s) - could not create a file for writing data...", prog_name);
-					//close(fd);
 					break;
 				}
 				// read data
 				printf("(%s) - receiving file data...\n", prog_name);
+				if(fwrite(r_msg.message_u.fdata.contents.contents_val, 1, r_msg.message_u.fdata.contents.contents_len, fPtr) != r_msg.message_u.fdata.contents.contents_len){
+					err_msg("(%s) - write failed...", prog_name);
+					free(r_msg.message_u.fdata.contents.contents_val);
+					fclose(fPtr);
+					break;
+				}
+				/*
 				while(fsize > 0){
 					// initialize vars
 					memset(&r_msg, 0, sizeof(message));
@@ -212,6 +210,9 @@ void prot_x(SOCKET s){
 					err_msg("(%s) - data received is partial, file may be corrupted", prog_name);
 					break;
 				}
+				*/
+				free(r_msg.message_u.fdata.contents.contents_val);
+				fclose(fPtr);
 				printf("(%s) - file %s correctly received\n", prog_name, fname);
 			}	
 		}
@@ -244,7 +245,7 @@ void prot_a(SOCKET s){
 	
 	// file vars
 	//int fd;
-	FILE *fPtr;
+	FILE *fPtr = NULL;
 	uint32_t fsize, fdate, fsize_n, fdate_n;
 
 	
@@ -257,15 +258,14 @@ void prot_a(SOCKET s){
 		memset(fname, 0, MAXFNAME * sizeof(char));
 		
 		printf("\n*******************************************************\n");
-		printf("(%s) - RETRIEVE FILE:\t\t get <filename>\n", prog_name);
-		printf("(%s) - QUIT GRACEFULLY:\t\t q\n", prog_name);
-		printf("(%s) - FORCE QUIT:\t\t a\n", prog_name);
+		printf("(%s) - RETRIEVE FILE:\t\t <filename>\n", prog_name);
+		printf("(%s) - QUIT GRACEFULLY:\t\t CTRL + D\n", prog_name);
 		printf("*******************************************************\n\n");
 		
 		Fgets(rk_buf, BUFSZ, stdin);
 		
 		// QUIT request
-		if(rk_buf[0] == 'Q' || rk_buf[0] == 'q'){
+		if(feof(stdin)){
 			// build QUIT message
 			strncpy(w_buf, QUIT_M, quit_sz);
 			// send message
@@ -274,21 +274,10 @@ void prot_a(SOCKET s){
 			break;
 		}
 		
-		// EXIT request
-		else if(rk_buf[0] == 'A' || rk_buf[0] == 'a'){
-			break;
-		}
-		
-		// request not recognised
-		else if((strncmp(rk_buf, "GET ", 4) != 0) && (strncmp(rk_buf, "get ", 4) != 0)){
-			printf("(%s) - command not recognised try again..\n", prog_name);
-			continue;
-		}
-		
 		// GET request
 		else{
 			// store file name
-			memcpy(fname, &rk_buf[4], MAXFNAME);
+			memcpy(fname, rk_buf, MAXFNAME);
 			n = strcspn(fname, "\r\n");
 			fname[n] = '\0';
 			fname[MAXFNAME-1] = '\0';
@@ -328,8 +317,8 @@ void prot_a(SOCKET s){
 					err_msg("(%s) - undefined response from server", prog_name);
 					break;
 				}
-				printf("(%s) - error message from server, file may not exist\n", prog_name);
-				continue;
+				printf("(%s) - -ERR message, file may not exist\n", prog_name);
+				break;
 			}
 		
 			// OK RESPONSE read file infos
@@ -369,7 +358,6 @@ void prot_a(SOCKET s){
 				}
 				fsize-=n;
 			}
-			//close(fd);
 			fclose(fPtr);
 			if(fsize > 0){
 				err_msg("(%s) - data received is partial, file may be corrupted", prog_name);

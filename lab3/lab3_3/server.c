@@ -133,7 +133,6 @@ void prot_a(int conn_fd){
 	int ok_sz = strlen(OK_M);
 	
 	//file vars
-	//int fd;
 	FILE *fPtr = NULL;
 	struct stat statbuf;
 	uint32_t fsize_n, lastmod_n;
@@ -173,7 +172,7 @@ void prot_a(int conn_fd){
 		// leave last byte of r_buf for \0
 		if((n = recv(conn_fd, r_buf, BUFSZ-1, 0)) == -1){
 			err_msg("(%s) - error in recv", prog_name);
-			continue;
+			break;
 		}
 		// if no data is received client has closed connection, break client loop
 		if(n == 0){
@@ -195,7 +194,7 @@ void prot_a(int conn_fd){
 				err_msg("(%s) - could not send back error message", prog_name);
 				break;
 			}
-			continue;
+			break;
 		}
 		// get request received
 		else{
@@ -214,7 +213,7 @@ void prot_a(int conn_fd){
 					err_msg("(%s) - could not send back error message", prog_name);
 					break;
 				}
-				continue;
+				break;
 			}
 			fsize_n = htonl(statbuf.st_size);
 			lastmod_n = htonl(statbuf.st_mtim.tv_sec);
@@ -227,7 +226,7 @@ void prot_a(int conn_fd){
 					err_msg("(%s) - could not send back error message", prog_name);
 					break;
 				}
-				continue;
+				break;
 			}
 			
 			// build info message

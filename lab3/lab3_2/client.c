@@ -168,8 +168,8 @@ void prot_a_multiplex(SOCKET s){
 						err_msg("(%s) - undefined response from server", prog_name);
 						break;
 					}
-					printf("(%s) - error message from server, file may not exist\n", prog_name);
-					continue;
+					printf("(%s) - -ERR message from server, file may not exist\n", prog_name);
+					break;
 				}
 
 				// OK RESPONSE read file infos

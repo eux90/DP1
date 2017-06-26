@@ -106,7 +106,8 @@ void prot_x(int conn_fd){
 	FILE *fPtr = NULL;
 	ssize_t n;
 	struct stat statbuf;
-	unsigned int fsize,sent;
+	unsigned int fsize;
+	//unsigned int sent;
 	char fname[MAXFNAME];
 	char fbuf[FBUFSZ];
 	
@@ -123,7 +124,7 @@ void prot_x(int conn_fd){
 		memset(&w_msg, 0, sizeof(message));
 		memset(fbuf, 0, BUFSZ * sizeof(char));
 		memset(fname, 0, MAXFNAME * sizeof(char));
-		sent = 0;
+		//sent = 0;
 		
 		if(!xdr_message(&r_xdrs, &r_msg)){
 			err_msg("(%s) - error in client request", prog_name);
@@ -133,7 +134,6 @@ void prot_x(int conn_fd){
 		// GET request
 		if(r_msg.tag == GET){
 			// store filename in fname and free xdr allocated data
-			//memset(fname, 0, MAXFNAME);
 			strncpy(fname, r_msg.message_u.filename, MAXFNAME);
 			fname[MAXFNAME-1] = '\0';
 			free(r_msg.message_u.filename);
@@ -142,20 +142,19 @@ void prot_x(int conn_fd){
 			// get file info
 			if(stat(fname, &statbuf) != 0){
 				err_msg("(%s) - file not found or error in retrieving file infos", prog_name);
-				// build and sen error message
+				// build and send error message
 				w_msg.tag = ERR;
 				if(!xdr_message(&w_xdrs, &w_msg)){
 					err_msg("(%s) - error in transmission", prog_name);
 					break;
 				}
 				fflush(w_stream);
-				continue;
+				break;
 			}
 			// store file size
 			fsize = (unsigned int)statbuf.st_size;
 			
 			// open file for reading
-			//if((fd = open(fname, O_RDONLY)) == -1){
 			if((fPtr = fopen(fname, "r")) == NULL){
 				err_msg("(%s) - error opening file for reading", prog_name);
 				// build and send error message
@@ -165,20 +164,40 @@ void prot_x(int conn_fd){
 					break;
 				}
 				fflush(w_stream);
-				continue;
+				break;
 			}
 			
-			// build and send info message
-			printf("(%s) - file found, sending file infos..\n", prog_name);
+			// build and send info and data data
+			printf("(%s) - file found, sending file..\n", prog_name);
 			w_msg.tag = OK;
 			w_msg.message_u.fdata.last_mod_time = (u_int)statbuf.st_mtim.tv_sec;
+			w_msg.message_u.fdata.contents.contents_len = (u_int)fsize;
+			// alocate space for data
+			if((w_msg.message_u.fdata.contents.contents_val = (char *)malloc(fsize * sizeof(char))) == NULL){
+				err_msg("(%s) - malloc failed, could not allocate memory", prog_name);
+				fclose(fPtr);
+				break;
+			}
+			// set to zero the buffer
+			bzero(w_msg.message_u.fdata.contents.contents_val, fsize);
+			// read from file and write data to buffer
+			if((n = fread(w_msg.message_u.fdata.contents.contents_val, 1, fsize, fPtr)) != fsize){
+				err_msg("(%s) - error in fread", prog_name);
+				free(w_msg.message_u.fdata.contents.contents_val);
+				fclose(fPtr);
+				break;
+			}
+			// send message		
 			if(!xdr_message(&w_xdrs, &w_msg)){
 				err_msg("(%s) - error in transmission", prog_name);
+				free(w_msg.message_u.fdata.contents.contents_val);
 				fclose(fPtr);
 				break;
 			}
 			fflush(w_stream);
-			
+			free(w_msg.message_u.fdata.contents.contents_val);
+			fclose(fPtr);
+			/*
 			// send file size
 			if(!xdr_u_int(&w_xdrs, &fsize)){
 				err_msg("(%s) - error in transmission", prog_name);
@@ -220,6 +239,7 @@ void prot_x(int conn_fd){
 				err_msg("(%s) - error in read or transmission", prog_name);
 				break;
 			}
+			*/
 			printf("(%s) - file sent\n", prog_name);
 		}
 		
@@ -280,7 +300,7 @@ void prot_a(int conn_fd){
 		// leave last byte of r_buf for \0
 		if((n = recv(conn_fd, r_buf, BUFSZ-1, 0)) == -1){
 			err_msg("(%s) - error in recv", prog_name);
-			continue;
+			break;
 		}
 		// if no data is received client has closed connection, break client loop
 		if(n == 0){
@@ -302,7 +322,7 @@ void prot_a(int conn_fd){
 				err_msg("(%s) - could not send back error message", prog_name);
 				break;
 			}
-			continue;
+			break;
 		}
 		// get request received
 		else{
@@ -321,7 +341,7 @@ void prot_a(int conn_fd){
 					err_msg("(%s) - could not send back error message", prog_name);
 					break;
 				}
-				continue;
+				break;
 			}
 			fsize_n = htonl(statbuf.st_size);
 			lastmod_n = htonl(statbuf.st_mtim.tv_sec);
@@ -334,7 +354,7 @@ void prot_a(int conn_fd){
 					err_msg("(%s) - could not send back error message", prog_name);
 					break;
 				}
-				continue;
+				break;
 			}
 			
 			// build info message
